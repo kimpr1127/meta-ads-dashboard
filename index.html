@@ -687,7 +687,7 @@ function aggregateAds(data) {
     map[key].ctrs.push(r.ctr); map[key].cpcs.push(r.cpc);
   });
   return Object.values(map).map(a => {
-    a.roas = a.spend > 0 ? parseFloat((a.revenue/a.spend).toFixed(2)) : 0;
+    a.roas = a.spend > 0 && a.revenue > 0 ? parseFloat((a.revenue/a.spend).toFixed(4)) : 0;
     a.ctr = parseFloat((a.ctrs.reduce((s,v)=>s+v,0)/a.ctrs.length).toFixed(2));
     a.cpc = Math.round(a.cpcs.reduce((s,v)=>s+v,0)/a.cpcs.length);
     return a;
