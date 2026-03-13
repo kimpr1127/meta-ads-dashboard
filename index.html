@@ -156,6 +156,22 @@
   /* ── Divider ── */
   .divider { height: 1px; background: var(--border); }
 
+  /* ── Date picker ── */
+  .date-picker-wrap { display: flex; align-items: center; gap: 8px; }
+  .date-picker-wrap input[type="date"] {
+    padding: 5px 10px; border-radius: 20px; border: 1px solid var(--border2);
+    background: var(--surface2); color: var(--text); font-size: 12px;
+    font-family: 'DM Sans', sans-serif; cursor: pointer; height: 32px;
+    color-scheme: dark;
+  }
+  .date-picker-wrap input[type="date"]:focus { outline: none; border-color: var(--teal); }
+  .date-picker-wrap .date-sep { font-size: 12px; color: var(--text3); }
+  .date-picker-wrap .date-apply {
+    padding: 5px 14px; border-radius: 20px; border: 1px solid var(--teal);
+    background: none; color: var(--teal); font-size: 12px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.15s; height: 32px;
+  }
+  .date-picker-wrap .date-apply:hover { background: var(--teal); color: #0C0E13; }
   /* ── Scrollbar ── */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -186,6 +202,13 @@
         <button class="pill active" data-days="7" onclick="setPeriod(this)">최근 7일</button>
         <button class="pill" data-days="30" onclick="setPeriod(this)">최근 30일</button>
         <button class="pill" data-days="0" onclick="setPeriod(this)">전체</button>
+        <button class="pill" data-days="-1" onclick="setPeriod(this)">직접 설정</button>
+      </div>
+      <div class="date-picker-wrap" id="datePickerWrap" style="display:none">
+        <input type="date" id="dateFrom">
+        <span class="date-sep">~</span>
+        <input type="date" id="dateTo">
+        <button class="date-apply" onclick="applyCustomDate()">적용</button>
       </div>
     </div>
   </header>
@@ -335,6 +358,8 @@ let rawData = [];
 let filteredData = [];
 let selectedSku = 'all';
 let periodDays = 7;
+let customFrom = null;
+let customTo = null;
 let skuChartInst = null;
 let spendChartInst = null;
 
@@ -383,19 +408,24 @@ function parseCSVLine(line) {
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = parseCSVLine(lines[0]).map(h => h.replace(/"/g,'').trim().toLowerCase());
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.trim().split(/\r?\n/);
+  const rawHeaders = parseCSVLine(lines[0]).map(h => h.replace(/"/g,'').trim());
+  const headers = rawHeaders.map(h => h.toLowerCase());
 
-  const get = (row, ...keys) => {
+  const getIdx = (...keys) => {
     for (const k of keys) {
-      const i = headers.findIndex(h => h.includes(k));
-      if (i >= 0 && i < row.length) return row[i].replace(/"/g,'').trim();
+      const i = headers.findIndex(h => h.includes(k.toLowerCase()));
+      if (i >= 0) return i;
     }
-    return '';
+    return -1;
+  };
+  const getVal = (row, ...keys) => {
+    const i = getIdx(...keys);
+    return (i >= 0 && i < row.length) ? row[i].replace(/"/g,'').trim() : '';
   };
 
-  // 한국어 메타 광고 내보내기 형식인지 확인
-  const isKorean = headers.some(h => h.includes('보고') || h.includes('캠페인 이름') || h.includes('지출 금액'));
+  const isKorean = headers.some(h => h.includes('보고 시작') || h.includes('캠페인 이름') || h.includes('지출 금액'));
 
   return lines.slice(1).map(line => {
     if (!line.trim()) return null;
@@ -404,52 +434,47 @@ function parseCSV(text) {
     let ds, d, campaign, adName, sku, spend, purchases, revenue, roas, ctr, cpc;
 
     if (isKorean) {
-      // 한국어 메타 광고 형식
-      ds = get(cols, '보고 시작', '날짜', 'date');
+      ds = cols[0] ? cols[0].replace(/"/g,'').trim() : '';
       d = new Date(ds);
       if (isNaN(d.getTime())) return null;
 
-      campaign = get(cols, '캠페인 이름', 'campaign');
-      adName = get(cols, '광고 이름', '광고세트 이름', '캠페인 이름', 'ad name');
-      // SKU가 없으면 캠페인명에서 앞부분 추출해서 그룹화
-      const rawSku = get(cols, 'sku');
+      campaign = getVal(cols, '캠페인 이름');
+      adName = campaign;
+
+      const rawSku = getVal(cols, 'sku');
       if (rawSku) {
         sku = rawSku;
       } else {
-        // 캠페인명 앞 키워드를 SKU로 사용 (예: 트푸_, 가니쉬_ 등)
-        const match = campaign.match(/^([^\s_]+[_\s]?[^\s_]*?)(?:_|\s)/);
-        sku = match ? match[1].replace(/_$/, '') : campaign.slice(0, 6);
+        const cleaned = campaign.replace(/^\[.*?\]\s*/, '').replace(/^[^가-힣a-zA-Z]*/, '');
+        const match = cleaned.match(/^([가-힣a-zA-Z0-9]+)/);
+        sku = match ? match[1] : campaign.slice(0, 4);
       }
 
-      spend = parseFloat(get(cols, '지출 금액', 'spend').replace(/,/g,'')) || 0;
-      purchases = parseInt(get(cols, '구매', 'purchase').replace(/,/g,'')) || 0;
-
-      const aov = parseFloat(get(cols, '평균 구매 전환값', 'revenue').replace(/,/g,'')) || 0;
-      revenue = aov * purchases;
-
-      roas = parseFloat(get(cols, 'roas', '구매 roas').replace(/,/g,'')) || 0;
-      if (roas === 0 && spend > 0 && revenue > 0) roas = parseFloat((revenue/spend).toFixed(2));
-
-      ctr = parseFloat(get(cols, 'ctr', '클릭률').replace(/,/g,'')) || 0;
-      cpc = parseFloat(get(cols, 'cpc', 'cpc(전체)').replace(/,/g,'')) || 0;
+      spend = parseFloat(getVal(cols, '지출 금액').replace(/,/g,'')) || 0;
+      purchases = parseInt(getVal(cols, '구매').replace(/,/g,'')) || 0;
+      const aov = parseFloat(getVal(cols, '평균 구매 전환값').replace(/,/g,'')) || 0;
+      revenue = Math.round(aov * purchases);
+      roas = parseFloat(getVal(cols, '구매 roas', 'roas').replace(/,/g,'')) || 0;
+      if (!roas && spend > 0 && revenue > 0) roas = parseFloat((revenue/spend).toFixed(2));
+      ctr = parseFloat(getVal(cols, 'ctr', '클릭률').replace(/,/g,'')) || 0;
+      cpc = parseFloat(getVal(cols, 'cpc(전체)', 'cpc').replace(/,/g,'')) || 0;
 
     } else {
-      // 영어 형식 (기존)
-      ds = get(cols,'date');
+      ds = getVal(cols, 'date');
       d = new Date(ds);
       if (isNaN(d.getTime())) return null;
-      campaign = get(cols,'campaign');
-      adName = get(cols,'ad name','adname','ad_name');
-      sku = get(cols,'sku') || campaign.slice(0,6);
-      spend = parseFloat(get(cols,'spend').replace(/,/g,'')) || 0;
-      purchases = parseInt(get(cols,'purchase').replace(/,/g,'')) || 0;
-      revenue = parseFloat(get(cols,'revenue').replace(/,/g,'')) || 0;
-      roas = spend > 0 ? parseFloat((revenue/spend).toFixed(2)) : (parseFloat(get(cols,'roas')) || 0);
-      ctr = parseFloat(get(cols,'ctr')) || 0;
-      cpc = parseFloat(get(cols,'cpc')) || 0;
+      campaign = getVal(cols, 'campaign name', 'campaign');
+      adName = getVal(cols, 'ad name', 'adname', 'ad_name') || campaign;
+      sku = getVal(cols, 'sku') || campaign.slice(0, 6);
+      spend = parseFloat(getVal(cols, 'spend').replace(/,/g,'')) || 0;
+      purchases = parseInt(getVal(cols, 'purchases', 'purchase').replace(/,/g,'')) || 0;
+      revenue = parseFloat(getVal(cols, 'revenue').replace(/,/g,'')) || 0;
+      roas = spend > 0 && revenue > 0 ? parseFloat((revenue/spend).toFixed(2)) : (parseFloat(getVal(cols,'roas')) || 0);
+      ctr = parseFloat(getVal(cols, 'ctr')) || 0;
+      cpc = parseFloat(getVal(cols, 'cpc')) || 0;
     }
 
-    return { date: d, ds, campaign, adName: adName || campaign, sku, spend, purchases, revenue, roas, ctr, cpc };
+    return { date: d, ds, campaign, adName, sku, spend, purchases, revenue, roas, ctr, cpc };
   }).filter(Boolean);
 }
 
@@ -477,6 +502,32 @@ function setPeriod(btn) {
   document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   periodDays = parseInt(btn.dataset.days);
+  if (periodDays === -1) {
+    document.getElementById('datePickerWrap').style.display = 'flex';
+    // 기본값: 데이터 최신 날짜 기준 7일
+    const dates = rawData.map(r => r.date).sort((a,b) => b-a);
+    if (dates.length) {
+      const toDate = dates[0];
+      const fromDate = new Date(toDate); fromDate.setDate(toDate.getDate() - 6);
+      document.getElementById('dateFrom').value = fromDate.toISOString().slice(0,10);
+      document.getElementById('dateTo').value = toDate.toISOString().slice(0,10);
+      customFrom = fromDate;
+      customTo = toDate;
+    }
+  } else {
+    document.getElementById('datePickerWrap').style.display = 'none';
+    customFrom = null; customTo = null;
+    applyFilter();
+  }
+}
+
+function applyCustomDate() {
+  const from = document.getElementById('dateFrom').value;
+  const to = document.getElementById('dateTo').value;
+  if (!from || !to) return;
+  customFrom = new Date(from);
+  customTo = new Date(to);
+  customTo.setHours(23,59,59);
   applyFilter();
 }
 
@@ -484,6 +535,9 @@ function setPeriod(btn) {
 function applyFilter() {
   const now = new Date();
   filteredData = rawData.filter(r => {
+    if (periodDays === -1 && customFrom && customTo) {
+      return r.date >= customFrom && r.date <= customTo;
+    }
     if (periodDays === 0) return true;
     return (now - r.date) / 86400000 <= periodDays;
   }).filter(r => selectedSku === 'all' || r.sku === selectedSku);
@@ -552,7 +606,7 @@ function renderKPI() {
   document.getElementById('kpiStrip').innerHTML = `
     <div class="kpi-card"><div class="kpi-label">총 지출</div><div class="kpi-value">${fmtW(totalSpend)}</div><div class="kpi-sub">${filteredData.length.toLocaleString()}개 레코드</div></div>
     <div class="kpi-card"><div class="kpi-label">총 매출</div><div class="kpi-value">${fmtW(totalRev)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">전체 ROAS</div><div class="kpi-value ${avgRoas>=2?'teal':'red'}">${avgRoas.toFixed(2)}x</div></div>
+    <div class="kpi-card"><div class="kpi-label">전체 ROAS</div><div class="kpi-value ${avgRoas>=2?'teal':'red'}">${(avgRoas*100).toFixed(0)}%</div></div>
     <div class="kpi-card"><div class="kpi-label">총 구매수</div><div class="kpi-value">${totalPur.toLocaleString()}<span style="font-size:1rem;color:var(--text3)">건</span></div></div>
     <div class="kpi-card"><div class="kpi-label">평균 CTR</div><div class="kpi-value">${avgCtr.toFixed(2)}<span style="font-size:1rem;color:var(--text3)">%</span></div></div>
   `;
@@ -573,7 +627,7 @@ function renderTop5() {
         <div class="top5-name">${a.adName}</div>
         <div class="top5-sku">${a.sku} · 지출 ${fmtW(a.spend)}</div>
       </div>
-      <div class="top5-roas ${cls}">${a.roas.toFixed(2)}x</div>
+      <div class="top5-roas ${cls}">${(a.roas*100).toFixed(0)}%</div>
     </div>
   `).join('');
   document.getElementById('top5Win').innerHTML = makeList(win, 'teal');
@@ -609,7 +663,7 @@ function renderTable() {
       <td>
         <div class="roas-cell">
           <div class="roas-track"><div class="roas-fill" style="width:${pct}%;background:${isGood?'var(--teal)':'var(--red)'}"></div></div>
-          <span class="roas-num" style="color:${isGood?'var(--teal)':'var(--red)'}">${a.roas.toFixed(2)}x</span>
+          <span class="roas-num" style="color:${isGood?'var(--teal)':'var(--red)'}">${(a.roas*100).toFixed(0)}%</span>
         </div>
       </td>
       <td>${fmtW(a.spend)}</td>
@@ -636,7 +690,7 @@ function renderCharts() {
   skuChartInst = new Chart(document.getElementById('skuChart'), {
     type:'bar',
     data:{ labels, datasets:[{ data:roasVals, backgroundColor: labels.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]+'33'), borderColor: labels.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]), borderWidth:1.5, borderRadius:6 }] },
-    options:{ ...opts, scales:{ x:{ ticks:{color:'#8B90A8',font:{size:11}}, grid:{color:'#232736'} }, y:{ ticks:{color:'#8B90A8',font:{size:11},callback:v=>v+'x'}, grid:{color:'#232736'} } } }
+    options:{ ...opts, scales:{ x:{ ticks:{color:'#8B90A8',font:{size:11}}, grid:{color:'#232736'} }, y:{ ticks:{color:'#8B90A8',font:{size:11},callback:v=>(v*100).toFixed(0)+'%'}, grid:{color:'#232736'} } } }
   });
 
   if (spendChartInst) spendChartInst.destroy();
@@ -684,14 +738,14 @@ function buildPrompt() {
   const fmtW = n => '₩'+Math.round(n).toLocaleString('ko-KR');
   return `나는 메타 광고 콘텐츠 마케터야. 아래 광고 성과 데이터를 보고 다음 주 소재 제작 방향을 추천해줘.
 
-[분석 기간] 최근 ${periodDays===0?'전체':periodDays+'일'}
-[평균 ROAS] ${avgRoas.toFixed(2)}x
+[분석 기간] ${periodDays===-1&&customFrom&&customTo?customFrom.toISOString().slice(0,10)+'~'+customTo.toISOString().slice(0,10):periodDays===0?'전체':'최근 '+periodDays+'일'}
+[평균 ROAS] ${(avgRoas*100).toFixed(0)}%
 
 [위닝 소재 TOP 3]
-${top3.map((a,i)=>`${i+1}. ${a.adName} (SKU: ${a.sku}) — ROAS ${a.roas.toFixed(2)}x, 지출 ${fmtW(a.spend)}, 구매 ${a.purchases}건`).join('\n')}
+${top3.map((a,i)=>`${i+1}. ${a.adName} (SKU: ${a.sku}) — ROAS ${(a.roas*100).toFixed(0)}%, 지출 ${fmtW(a.spend)}, 구매 ${a.purchases}건`).join('\n')}
 
 [저성과 소재 TOP 3]
-${bad3.map((a,i)=>`${i+1}. ${a.adName} (SKU: ${a.sku}) — ROAS ${a.roas.toFixed(2)}x, 지출 ${fmtW(a.spend)}, 구매 ${a.purchases}건`).join('\n')}
+${bad3.map((a,i)=>`${i+1}. ${a.adName} (SKU: ${a.sku}) — ROAS ${(a.roas*100).toFixed(0)}%, 지출 ${fmtW(a.spend)}, 구매 ${a.purchases}건`).join('\n')}
 
 다음 내용을 구체적으로 알려줘:
 1. 위닝 소재의 공통 패턴 분석 (소재명, 유형, 특징 기준)
@@ -711,7 +765,7 @@ function renderAI() {
   document.getElementById('aiSummary').innerHTML = `
     <div class="ai-stat"><div class="ai-stat-label">위닝 소재 (ROAS 상위)</div><div class="ai-stat-val teal">${top3.map(a=>a.adName.length>15?a.adName.slice(0,15)+'…':a.adName).join(', ')}</div></div>
     <div class="ai-stat"><div class="ai-stat-label">저성과 소재 (ROAS 하위)</div><div class="ai-stat-val">${bad3.map(a=>a.adName.length>15?a.adName.slice(0,15)+'…':a.adName).join(', ')}</div></div>
-    <div class="ai-stat"><div class="ai-stat-label">평균 ROAS</div><div class="ai-stat-val teal">${avgRoas.toFixed(2)}x</div></div>
+    <div class="ai-stat"><div class="ai-stat-label">평균 ROAS</div><div class="ai-stat-val teal">${(avgRoas*100).toFixed(0)}%</div></div>
     <div class="ai-stat"><div class="ai-stat-label">분석 소재 수</div><div class="ai-stat-val">${ads.length}개</div></div>
   `;
 }
