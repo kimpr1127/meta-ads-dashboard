@@ -590,7 +590,7 @@ function parseCSV(text) {
       const aov = parseFloat(getVal(cols,'평균 구매 전환값').replace(/,/g,'')) || 0;
       revenue = Math.round(aov * purchases);
       roas = parseFloat(getVal(cols,'구매 roas','roas').replace(/,/g,'')) || 0;
-      if (!roas && spend > 0 && revenue > 0) roas = parseFloat((revenue/spend).toFixed(2));
+      if (spend > 0 && revenue > 0) roas = parseFloat((revenue/spend).toFixed(2));
       ctr = parseFloat(getVal(cols,'ctr','클릭률').replace(/,/g,'')) || 0;
       cpc = parseFloat(getVal(cols,'cpc(전체)','cpc').replace(/,/g,'')) || 0;
     } else {
