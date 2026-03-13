@@ -205,9 +205,9 @@
         <button class="pill" data-days="-1" onclick="setPeriod(this)">직접 설정</button>
       </div>
       <div class="date-picker-wrap" id="datePickerWrap" style="display:none">
-        <input type="date" id="dateFrom">
+        <input type="date" id="dateFrom" onchange="applyCustomDate()">
         <span class="date-sep">~</span>
-        <input type="date" id="dateTo">
+        <input type="date" id="dateTo" onchange="applyCustomDate()">
         <button class="date-apply" onclick="applyCustomDate()">적용</button>
       </div>
     </div>
@@ -504,16 +504,17 @@ function setPeriod(btn) {
   periodDays = parseInt(btn.dataset.days);
   if (periodDays === -1) {
     document.getElementById('datePickerWrap').style.display = 'flex';
-    // 기본값: 데이터 최신 날짜 기준 7일
-    const dates = rawData.map(r => r.date).sort((a,b) => b-a);
+    // 기본값: 데이터 전체 날짜 범위로 자동 설정
+    const dates = rawData.map(r => r.date).sort((a,b) => a-b);
     if (dates.length) {
-      const toDate = dates[0];
-      const fromDate = new Date(toDate); fromDate.setDate(toDate.getDate() - 6);
+      const fromDate = dates[0];
+      const toDate = dates[dates.length - 1];
       document.getElementById('dateFrom').value = fromDate.toISOString().slice(0,10);
       document.getElementById('dateTo').value = toDate.toISOString().slice(0,10);
-      customFrom = fromDate;
-      customTo = toDate;
+      customFrom = new Date(fromDate); customFrom.setHours(0,0,0,0);
+      customTo = new Date(toDate); customTo.setHours(23,59,59,999);
     }
+    applyFilter();
   } else {
     document.getElementById('datePickerWrap').style.display = 'none';
     customFrom = null; customTo = null;
