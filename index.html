@@ -284,6 +284,19 @@
     padding:2px 8px; border-radius:3px; font-weight:600;
   }
 
+  /* ── Filter bar ── */
+  .filter-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .filter-group { display:flex; align-items:center; gap:6px; }
+  .filter-label { font-size:11px; font-weight:600; color:var(--text3); white-space:nowrap; }
+  .filter-input {
+    padding:5px 10px; border-radius:4px; border:1px solid var(--border2);
+    background:var(--white); color:var(--text); font-size:12px;
+    font-family:'Pretendard','Inter',sans-serif; width:80px; height:30px;
+  }
+  .filter-input:focus { outline:none; border-color:var(--red); }
+  .filter-unit { font-size:12px; color:var(--text3); }
+  .filter-divider { width:1px; height:20px; background:var(--border); margin:0 4px; }
+
   /* ── Chart ── */
   .chart-wrap { position:relative; width:100%; height:220px; }
 
@@ -415,6 +428,7 @@
           <option value="roas">ROAS</option>
           <option value="spend">지출 금액</option>
           <option value="purchases">구매 수</option>
+          <option value="aov">구매 전환값</option>
           <option value="ctr">CTR</option>
           <option value="cpc">CPC</option>
         </select>
@@ -426,6 +440,30 @@
           <option value="asc">낮은 순 ↑</option>
         </select>
       </div>
+    </div>
+
+    <div>
+      <div class="sidebar-section-title">성과 필터</div>
+      <div class="sort-row">
+        <div class="sort-label">최소 ROAS (%)</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input class="filter-input" type="number" id="minRoas" placeholder="예: 200" min="0" oninput="renderAll()" style="width:100%">
+          <span class="filter-unit">% 이상</span>
+        </div>
+      </div>
+      <div class="sort-row" style="margin-top:8px">
+        <div class="sort-label">최소 지출 (₩)</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input class="filter-input" type="number" id="minSpend" placeholder="예: 50000" min="0" oninput="renderAll()" style="width:100%">
+        </div>
+      </div>
+      <div class="sort-row" style="margin-top:8px">
+        <div class="sort-label">최소 구매 수</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input class="filter-input" type="number" id="minPurchases" placeholder="예: 1" min="0" oninput="renderAll()" style="width:100%">
+        </div>
+      </div>
+      <button onclick="clearFilters()" style="margin-top:10px;width:100%;padding:7px;border-radius:4px;border:1px solid var(--border2);background:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Pretendard','Inter',sans-serif;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text3)'">✕ 필터 초기화</button>
     </div>
 
     <div style="margin-top:auto">
@@ -484,7 +522,7 @@
             <thead>
               <tr>
                 <th>소재명</th><th>SKU</th><th>ROAS</th><th>지출</th>
-                <th>매출</th><th>구매수</th><th>CTR</th><th>CPC</th><th>상태</th>
+                <th>매출</th><th>구매수</th><th>구매전환값</th><th>CTR</th><th>CPC</th><th>상태</th>
               </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -688,6 +726,7 @@ function aggregateAds(data) {
   });
   return Object.values(map).map(a => {
     a.roas = a.spend > 0 && a.revenue > 0 ? parseFloat((a.revenue/a.spend).toFixed(4)) : 0;
+    a.aov = a.purchases > 0 ? Math.round(a.revenue / a.purchases) : 0;
     a.ctr = parseFloat((a.ctrs.reduce((s,v)=>s+v,0)/a.ctrs.length).toFixed(2));
     a.cpc = Math.round(a.cpcs.reduce((s,v)=>s+v,0)/a.cpcs.length);
     return a;
@@ -751,7 +790,16 @@ function renderTable() {
   const search = (document.getElementById('searchInput').value||'').toLowerCase();
   const maxRoas = Math.max(...ads.map(a=>a.roas), 1);
   const fmtW = n => '₩'+Math.round(n).toLocaleString('ko-KR');
-  let list = ads.filter(a => a.adName.toLowerCase().includes(search));
+  const minRoas      = parseFloat(document.getElementById('minRoas').value) || 0;
+  const minSpend     = parseFloat(document.getElementById('minSpend').value) || 0;
+  const minPurchases = parseInt(document.getElementById('minPurchases').value) || 0;
+
+  let list = ads.filter(a =>
+    a.adName.toLowerCase().includes(search) &&
+    (a.roas * 100) >= minRoas &&
+    a.spend >= minSpend &&
+    a.purchases >= minPurchases
+  );
   list.sort((a,b) => dir==='desc' ? b[metric]-a[metric] : a[metric]-b[metric]);
   const getStatus = roas => {
     if (roas >= avgRoas*1.3) return ['위닝','badge-win'];
@@ -767,10 +815,11 @@ function renderTable() {
       <td><span class="badge-sku">${a.sku}</span></td>
       <td><div class="roas-cell"><div class="roas-track"><div class="roas-fill" style="width:${pct}%;background:${isGood?'var(--green)':'var(--red)'}"></div></div><span class="roas-num" style="color:${isGood?'var(--green)':'var(--red)'}">${(a.roas*100).toFixed(0)}%</span></div></td>
       <td>${fmtW(a.spend)}</td><td>${fmtW(a.revenue)}</td><td>${a.purchases.toLocaleString()}</td>
+      <td>${a.purchases>0?fmtW(Math.round(a.revenue/a.purchases)):'-'}</td>
       <td>${a.ctr.toFixed(2)}%</td><td>${fmtW(a.cpc)}</td>
       <td><span class="badge ${cls}">${label}</span></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--text3)">검색 결과가 없습니다</td></tr>';
+  }).join('') || '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--text3)">검색 결과가 없습니다</td></tr>';
 }
 
 const CHART_COLORS = ['#D42B2B','#2E7D4F','#C8860A','#1565C0','#6A1B9A','#00838F','#E65100','#558B2F'];
@@ -820,6 +869,13 @@ function selectSku(sku, el) {
   document.querySelectorAll('.sku-item').forEach(i=>i.classList.remove('active'));
   el.classList.add('active');
   applyFilter();
+}
+
+function clearFilters() {
+  document.getElementById('minRoas').value = '';
+  document.getElementById('minSpend').value = '';
+  document.getElementById('minPurchases').value = '';
+  renderAll();
 }
 
 function buildPrompt() {
