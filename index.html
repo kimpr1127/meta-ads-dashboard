@@ -369,29 +369,87 @@ function generateSample() {
 }
 
 // ── CSV Parser ─────────────────────────────────────
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+    else { cur += c; }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
 function parseCSV(text) {
   const lines = text.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,'').toLowerCase());
-  const get = (row, ...keys) => { for (const k of keys) { const i = headers.findIndex(h => h.includes(k)); if (i >= 0) return row[i]; } return ''; };
+  const headers = parseCSVLine(lines[0]).map(h => h.replace(/"/g,'').trim().toLowerCase());
+
+  const get = (row, ...keys) => {
+    for (const k of keys) {
+      const i = headers.findIndex(h => h.includes(k));
+      if (i >= 0 && i < row.length) return row[i].replace(/"/g,'').trim();
+    }
+    return '';
+  };
+
+  // 한국어 메타 광고 내보내기 형식인지 확인
+  const isKorean = headers.some(h => h.includes('보고') || h.includes('캠페인 이름') || h.includes('지출 금액'));
+
   return lines.slice(1).map(line => {
-    const cols = line.split(',').map(v => v.trim().replace(/"/g,''));
-    const ds = get(cols,'date');
-    const d = new Date(ds);
-    if (isNaN(d.getTime())) return null;
-    const spend = parseFloat(get(cols,'spend')) || 0;
-    const rev = parseFloat(get(cols,'revenue')) || 0;
-    return {
-      date: d, ds,
-      campaign: get(cols,'campaign'),
-      adName: get(cols,'ad name','adname','ad_name'),
-      sku: get(cols,'sku'),
-      spend,
-      purchases: parseInt(get(cols,'purchase')) || 0,
-      revenue: rev,
-      roas: spend > 0 ? parseFloat((rev/spend).toFixed(2)) : (parseFloat(get(cols,'roas')) || 0),
-      ctr: parseFloat(get(cols,'ctr')) || 0,
-      cpc: parseFloat(get(cols,'cpc')) || 0,
-    };
+    if (!line.trim()) return null;
+    const cols = parseCSVLine(line);
+
+    let ds, d, campaign, adName, sku, spend, purchases, revenue, roas, ctr, cpc;
+
+    if (isKorean) {
+      // 한국어 메타 광고 형식
+      ds = get(cols, '보고 시작', '날짜', 'date');
+      d = new Date(ds);
+      if (isNaN(d.getTime())) return null;
+
+      campaign = get(cols, '캠페인 이름', 'campaign');
+      adName = get(cols, '광고 이름', '광고세트 이름', '캠페인 이름', 'ad name');
+      // SKU가 없으면 캠페인명에서 앞부분 추출해서 그룹화
+      const rawSku = get(cols, 'sku');
+      if (rawSku) {
+        sku = rawSku;
+      } else {
+        // 캠페인명 앞 키워드를 SKU로 사용 (예: 트푸_, 가니쉬_ 등)
+        const match = campaign.match(/^([^\s_]+[_\s]?[^\s_]*?)(?:_|\s)/);
+        sku = match ? match[1].replace(/_$/, '') : campaign.slice(0, 6);
+      }
+
+      spend = parseFloat(get(cols, '지출 금액', 'spend').replace(/,/g,'')) || 0;
+      purchases = parseInt(get(cols, '구매', 'purchase').replace(/,/g,'')) || 0;
+
+      const aov = parseFloat(get(cols, '평균 구매 전환값', 'revenue').replace(/,/g,'')) || 0;
+      revenue = aov * purchases;
+
+      roas = parseFloat(get(cols, 'roas', '구매 roas').replace(/,/g,'')) || 0;
+      if (roas === 0 && spend > 0 && revenue > 0) roas = parseFloat((revenue/spend).toFixed(2));
+
+      ctr = parseFloat(get(cols, 'ctr', '클릭률').replace(/,/g,'')) || 0;
+      cpc = parseFloat(get(cols, 'cpc', 'cpc(전체)').replace(/,/g,'')) || 0;
+
+    } else {
+      // 영어 형식 (기존)
+      ds = get(cols,'date');
+      d = new Date(ds);
+      if (isNaN(d.getTime())) return null;
+      campaign = get(cols,'campaign');
+      adName = get(cols,'ad name','adname','ad_name');
+      sku = get(cols,'sku') || campaign.slice(0,6);
+      spend = parseFloat(get(cols,'spend').replace(/,/g,'')) || 0;
+      purchases = parseInt(get(cols,'purchase').replace(/,/g,'')) || 0;
+      revenue = parseFloat(get(cols,'revenue').replace(/,/g,'')) || 0;
+      roas = spend > 0 ? parseFloat((revenue/spend).toFixed(2)) : (parseFloat(get(cols,'roas')) || 0);
+      ctr = parseFloat(get(cols,'ctr')) || 0;
+      cpc = parseFloat(get(cols,'cpc')) || 0;
+    }
+
+    return { date: d, ds, campaign, adName: adName || campaign, sku, spend, purchases, revenue, roas, ctr, cpc };
   }).filter(Boolean);
 }
 
