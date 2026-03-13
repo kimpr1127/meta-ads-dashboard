@@ -474,6 +474,7 @@ function parseCSV(text) {
       cpc = parseFloat(getVal(cols, 'cpc')) || 0;
     }
 
+    if (spend <= 0) return null;
     return { date: d, ds, campaign, adName, sku, spend, purchases, revenue, roas, ctr, cpc };
   }).filter(Boolean);
 }
