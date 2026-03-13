@@ -713,7 +713,24 @@ function init() {
   document.getElementById('dashboard').style.flexDirection = 'column';
   document.getElementById('dashboard').style.gap = '20px';
   document.getElementById('skuSection').style.display = 'block';
-  buildSkuList(); applyFilter();
+  buildSkuList();
+
+  // 데이터 날짜 범위에 맞게 기간 자동 조정
+  const now = new Date();
+  const dates = rawData.map(r => r.date).sort((a,b) => b-a);
+  const latestDate = dates[0];
+  const oldestDate = dates[dates.length-1];
+  const daysSinceLatest = (now - latestDate) / 86400000;
+  const totalRange = (latestDate - oldestDate) / 86400000;
+
+  // 최신 데이터가 7일 이내면 7일, 30일 이내면 30일, 그 외엔 전체
+  if (daysSinceLatest <= 7 && totalRange <= 7) {
+    setPeriod(document.querySelector('.pill[data-days="7"]'));
+  } else if (daysSinceLatest <= 30 && totalRange <= 30) {
+    setPeriod(document.querySelector('.pill[data-days="30"]'));
+  } else {
+    setPeriod(document.querySelector('.pill[data-days="0"]'));
+  }
 }
 
 function aggregateAds(data) {
@@ -764,9 +781,20 @@ function renderKPI() {
 function renderTop5() {
   const ads = aggregateAds(filteredData);
   const avgRoas = ads.length > 0 ? ads.reduce((s,a)=>s+a.roas,0)/ads.length : 1;
-  const sorted = [...ads].sort((a,b)=>b.roas-a.roas);
+
+  // 사이드바 필터 적용
+  const minRoas      = parseFloat(document.getElementById('minRoas').value) || 0;
+  const minSpend     = parseFloat(document.getElementById('minSpend').value) || 0;
+  const minPurchases = parseInt(document.getElementById('minPurchases').value) || 0;
+  const filtered = ads.filter(a =>
+    (a.roas * 100) >= minRoas &&
+    a.spend >= minSpend &&
+    a.purchases >= minPurchases
+  );
+
+  const sorted = [...filtered].sort((a,b)=>b.roas-a.roas);
   const win = sorted.slice(0,5);
-  const bad = [...ads].sort((a,b)=>a.roas-b.roas).slice(0,5);
+  const bad = [...filtered].sort((a,b)=>a.roas-b.roas).slice(0,5);
   const fmtW = n => '₩'+Math.round(n).toLocaleString('ko-KR');
   const makeList = (list, cls) => list.map((a,i) => `
     <div class="top5-item">
