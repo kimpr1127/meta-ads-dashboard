@@ -247,6 +247,8 @@
   .btn-primary:hover { background:var(--red-dim); transform:translateY(-1px); }
   .btn-secondary { padding:12px 16px; border-radius:4px; border:1px solid var(--border2); background:none; color:var(--text2); font-size:13px; font-family:'Pretendard', 'Inter', sans-serif; cursor:pointer; transition:all 0.15s; font-weight:500; }
   .btn-secondary:hover { border-color:var(--red); color:var(--red); }
+  .btn-notion { padding:12px 16px; border-radius:4px; border:1px solid #6A1B9A; background:none; color:#6A1B9A; font-size:13px; font-family:'Pretendard', 'Inter', sans-serif; cursor:pointer; transition:all 0.15s; font-weight:600; white-space:nowrap; }
+  .btn-notion:hover { background:#6A1B9A; color:#fff; }
 
   .empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:80px 20px; color:var(--text3); text-align:center; gap:14px; min-height:60vh; }
   .empty-icon { font-size:48px; opacity:0.3; }
@@ -536,8 +538,10 @@
           <div class="ai-cta">
             <button class="btn-primary" onclick="openClaude()">Claude에게 소재 방향 추천받기 →</button>
             <button class="btn-secondary" onclick="copyPrompt()">프롬프트 복사</button>
+            <button class="btn-notion" onclick="copyNotion()">📋 노션 복사</button>
           </div>
           <div id="copyMsg" style="font-size:12px;color:var(--green);margin-top:8px;display:none">✓ 클립보드에 복사됐어요!</div>
+          <div id="notionMsg" style="font-size:12px;color:#6A1B9A;margin-top:8px;display:none">✓ 노션에 붙여넣기 할 수 있어요! (Ctrl+V)</div>
         </div>
       </div>
     </div>
@@ -1179,6 +1183,107 @@ function copyPrompt() {
     const msg = document.getElementById('copyMsg');
     msg.style.display = 'block';
     setTimeout(() => msg.style.display='none', 2500);
+  });
+}
+
+function copyNotion() {
+  const ads = aggregateAds(filteredData);
+  if (!ads.length) return;
+
+  const avgRoas = ads.reduce((s,a)=>s+a.roas,0)/ads.length;
+  const metric = document.getElementById('sortMetric').value;
+  const dir    = document.getElementById('sortDir').value;
+  const fmtW = n => '₩'+Math.round(n).toLocaleString('ko-KR');
+
+  const getStatus = roas => {
+    if (roas >= avgRoas*1.3) return '✅ 위닝';
+    if (roas <= avgRoas*0.7) return '🔴 저성과';
+    return '➖ 보통';
+  };
+
+  // 기간 텍스트
+  let periodText = '';
+  if (periodDays === -1 && customFrom && customTo) {
+    periodText = customFrom.toISOString().slice(0,10) + ' ~ ' + customTo.toISOString().slice(0,10);
+  } else if (periodDays === 0) {
+    periodText = '전체 기간';
+  } else {
+    periodText = '최근 ' + periodDays + '일';
+  }
+
+  const today = new Date();
+  const dateStr = today.getFullYear() + '.' + String(today.getMonth()+1).padStart(2,'0') + '.' + String(today.getDate()).padStart(2,'0');
+
+  // 전체 지출/매출/ROAS 요약
+  const totalSpend = ads.reduce((s,a)=>s+a.spend,0);
+  const totalRev   = ads.reduce((s,a)=>s+a.revenue,0);
+  const totalPur   = ads.reduce((s,a)=>s+a.purchases,0);
+  const overallRoas = totalSpend > 0 ? (totalRev/totalSpend*100).toFixed(0) : 0;
+
+  // 정렬
+  const sorted = [...ads].sort((a,b) => dir==='desc' ? b[metric]-a[metric] : a[metric]-b[metric]);
+
+  // 마크다운 표 생성
+  let md = '';
+  md += `## 📊 TrustyFood 소재 성과 리뷰
+`;
+  md += `**분석 기간:** ${periodText}　　**작성일:** ${dateStr}
+
+`;
+  md += `### 핵심 지표
+`;
+  md += `| 총 지출 | 총 매출 | 전체 ROAS | 총 구매수 |
+`;
+  md += `| --- | --- | --- | --- |
+`;
+  md += `| ${fmtW(totalSpend)} | ${fmtW(totalRev)} | ${overallRoas}% | ${totalPur}건 |
+
+`;
+
+  // 위닝 TOP5
+  const top5 = [...ads].sort((a,b)=>b.roas-a.roas).slice(0,5);
+  md += `### ✅ 위닝 소재 TOP 5
+`;
+  md += `| 순위 | 소재명 | SKU | ROAS | 지출 | 구매수 |
+`;
+  md += `| --- | --- | --- | --- | --- | --- |
+`;
+  top5.forEach((a,i) => {
+    md += `| ${i+1} | ${a.adName} | ${a.sku} | ${(a.roas*100).toFixed(0)}% | ${fmtW(a.spend)} | ${a.purchases}건 |
+`;
+  });
+
+  // 저성과 TOP5
+  const bad5 = [...ads].sort((a,b)=>a.roas-b.roas).slice(0,5);
+  md += `
+### 🔴 저성과 소재 TOP 5
+`;
+  md += `| 순위 | 소재명 | SKU | ROAS | 지출 | 구매수 |
+`;
+  md += `| --- | --- | --- | --- | --- | --- |
+`;
+  bad5.forEach((a,i) => {
+    md += `| ${i+1} | ${a.adName} | ${a.sku} | ${(a.roas*100).toFixed(0)}% | ${fmtW(a.spend)} | ${a.purchases}건 |
+`;
+  });
+
+  // 전체 소재 표
+  md += `
+### 📋 전체 소재 성과
+`;
+  md += `| 소재명 | SKU | ROAS | 지출 | 매출 | 구매수 | 구매전환값 | 상태 |
+`;
+  md += `| --- | --- | --- | --- | --- | --- | --- | --- |
+`;
+  sorted.forEach(a => {
+    md += `| ${a.adName} | ${a.sku} | ${(a.roas*100).toFixed(0)}% | ${fmtW(a.spend)} | ${fmtW(a.revenue)} | ${a.purchases}건 | ${a.purchases>0?fmtW(Math.round(a.revenue/a.purchases)):'-'} | ${getStatus(a.roas)} |
+`;
+  });
+
+  navigator.clipboard.writeText(md).then(() => {
+    const msg = document.getElementById('notionMsg');
+    msg.style.display = 'block';
+    setTimeout(() => msg.style.display='none', 3000);
   });
 }
 
