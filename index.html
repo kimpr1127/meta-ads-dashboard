@@ -272,6 +272,46 @@
   /* ── Upload Panel show/hide ── */
   .file-upload-panel { display:none; }
   .file-upload-panel.active { display:block; }
+
+  /* ── Present Button ── */
+  .present-btn {
+    padding:6px 16px; border-radius:4px; border:1px solid var(--border2);
+    background:none; color:var(--text2); font-size:12px; font-weight:600;
+    font-family:'Pretendard','Inter',sans-serif; cursor:pointer; transition:all 0.15s;
+    display:flex; align-items:center; gap:6px;
+  }
+  .present-btn:hover { border-color:var(--red); color:var(--red); background:var(--red-light); }
+  .present-btn.active { background:var(--red); border-color:var(--red); color:#fff; }
+
+  /* ── Presentation Mode ── */
+  body.present-mode .sidebar { display:none !important; }
+  body.present-mode .app { grid-template-columns:1fr; }
+  body.present-mode .main { padding:24px 40px; }
+  body.present-mode .ai-panel { display:none; }
+  body.present-mode .table-card { display:none; }
+
+  .present-banner {
+    display:none; grid-column:1/-1;
+    background:var(--red); color:#fff;
+    padding:10px 40px; font-size:13px; font-weight:600;
+    align-items:center; justify-content:space-between; gap:12px;
+  }
+  .present-banner.show { display:flex; }
+  .present-banner-left { display:flex; align-items:center; gap:16px; }
+  .present-banner-period { font-size:12px; opacity:0.85; font-weight:400; }
+  .present-exit {
+    padding:5px 14px; border-radius:4px; border:1px solid rgba(255,255,255,0.4);
+    background:none; color:#fff; font-size:12px; cursor:pointer;
+    font-family:'Pretendard','Inter',sans-serif; font-weight:600; transition:all 0.15s;
+  }
+  .present-exit:hover { background:rgba(255,255,255,0.15); }
+
+  body.present-mode .kpi-value { font-size:2.2rem; }
+  body.present-mode .kpi-card { padding:22px 24px; }
+  body.present-mode .top5-roas { font-size:1.4rem; }
+  body.present-mode .top5-name { font-size:13px; }
+  body.present-mode .card { padding:26px; }
+  body.present-mode .chart-wrap { height:280px; }
 </style>
 </head>
 <body>
@@ -297,8 +337,22 @@
         <input type="date" id="dateTo" onchange="applyCustomDate()">
         <button class="date-apply" onclick="applyCustomDate()">적용</button>
       </div>
+      <div class="topbar-divider"></div>
+      <button class="present-btn" id="presentBtn" onclick="togglePresentMode()">🖥️ 회의 모드</button>
     </div>
   </header>
+
+  <!-- PRESENT BANNER -->
+  <div class="present-banner" id="presentBanner">
+    <div class="present-banner-left">
+      <span>🖥️ 회의 모드</span>
+      <span class="present-banner-period" id="presentPeriodLabel"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span style="font-size:12px;opacity:0.7" id="presentDateLabel"></span>
+      <button class="present-exit" onclick="togglePresentMode()">✕ 회의 모드 종료</button>
+    </div>
+  </div>
 
   <!-- SIDEBAR -->
   <aside class="sidebar">
@@ -1127,6 +1181,61 @@ function copyPrompt() {
     setTimeout(() => msg.style.display='none', 2500);
   });
 }
+
+/* ══════════════════════════════════
+   PRESENTATION MODE
+══════════════════════════════════ */
+let isPresentMode = false;
+function togglePresentMode() {
+  isPresentMode = !isPresentMode;
+  const body = document.body;
+  const btn = document.getElementById('presentBtn');
+  const banner = document.getElementById('presentBanner');
+
+  if (isPresentMode) {
+    body.classList.add('present-mode');
+    btn.classList.add('active');
+    btn.textContent = '✕ 회의 모드 종료';
+    banner.classList.add('show');
+
+    // 기간 라벨
+    const periodLabel = document.getElementById('presentPeriodLabel');
+    if (periodDays === -1 && customFrom && customTo) {
+      periodLabel.textContent = customFrom.toISOString().slice(0,10) + ' ~ ' + customTo.toISOString().slice(0,10);
+    } else if (periodDays === 0) {
+      periodLabel.textContent = '전체 기간';
+    } else {
+      periodLabel.textContent = '최근 ' + periodDays + '일';
+    }
+
+    // 오늘 날짜
+    const today = new Date();
+    document.getElementById('presentDateLabel').textContent =
+      today.getFullYear() + '.' + String(today.getMonth()+1).padStart(2,'0') + '.' + String(today.getDate()).padStart(2,'0') + ' 기준';
+
+    // 차트 리렌더 (크기 변경 반영)
+    setTimeout(() => { renderCharts(); }, 100);
+
+    // 전체화면 시도
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(()=>{});
+    }
+  } else {
+    body.classList.remove('present-mode');
+    btn.classList.remove('active');
+    btn.innerHTML = '🖥️ 회의 모드';
+    banner.classList.remove('show');
+    if (document.exitFullscreen && document.fullscreenElement) {
+      document.exitFullscreen().catch(()=>{});
+    }
+    setTimeout(() => { renderCharts(); }, 100);
+  }
+}
+
+// ESC 키로 회의 모드 종료
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && isPresentMode) togglePresentMode();
+});
 </script>
 </body>
 </html>
