@@ -825,10 +825,14 @@ function parseCSV(text) {
       }
       spend = parseFloat(getVal(cols,'지출 금액').replace(/,/g,'')) || 0;
       purchases = parseInt(getVal(cols,'구매').replace(/,/g,'')) || 0;
+      // ✅ 메타 CSV의 ROAS 값을 그대로 사용 (재계산 금지)
+      const roasRaw = getVal(cols,'구매 roas','roas').replace(/,/g,'');
+      roas = parseFloat(roasRaw) || 0;
+      // revenue는 ROAS × spend로 역산 (표시용)
+      revenue = roas > 0 && spend > 0 ? Math.round(roas * spend) : 0;
+      // aov는 참고용으로만 사용
       const aov = parseFloat(getVal(cols,'평균 구매 전환값').replace(/,/g,'')) || 0;
-      revenue = Math.round(aov * purchases);
-      roas = parseFloat(getVal(cols,'구매 roas','roas').replace(/,/g,'')) || 0;
-      if (spend > 0 && revenue > 0) roas = parseFloat((revenue/spend).toFixed(2));
+      if (aov > 0 && purchases > 0) revenue = Math.round(aov * purchases);
       ctr = parseFloat(getVal(cols,'ctr','클릭률').replace(/,/g,'')) || 0;
       cpc = parseFloat(getVal(cols,'cpc(전체)','cpc').replace(/,/g,'')) || 0;
     } else {
