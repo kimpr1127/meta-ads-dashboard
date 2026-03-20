@@ -867,11 +867,12 @@ function parseCSV(text) {
   return lines.slice(1).map(line => {
     if (!line.trim()) return null;
     const cols = parseCSVLine(line);
-    let ds, d, campaign, adName, sku, spend, purchases, revenue, roas, ctr, cpc;
+    let ds, d, campaign, adSet, adName, sku, spend, purchases, revenue, roas, ctr, cpc;
     if (isKorean) {
       ds = cols[0] ? cols[0].replace(/"/g,'').trim() : '';
       d = new Date(ds); if (isNaN(d.getTime())) return null;
       campaign = getVal(cols, '캠페인 이름');
+      adSet = getVal(cols, '광고 세트 이름', '광고세트 이름', '광고 세트') || '';
       adName = getVal(cols, '광고 이름') || campaign;
       const rawSku = getVal(cols, 'sku');
       if (rawSku) { sku = rawSku; }
@@ -896,6 +897,7 @@ function parseCSV(text) {
     } else {
       ds = getVal(cols,'date'); d = new Date(ds); if (isNaN(d.getTime())) return null;
       campaign = getVal(cols,'campaign name','campaign');
+      adSet = getVal(cols,'ad set name','adset name','adset','ad set') || '';
       adName = getVal(cols,'ad name','adname','ad_name') || campaign;
       sku = getVal(cols,'sku') || campaign.slice(0,6);
       spend = parseFloat(getVal(cols,'spend').replace(/,/g,'')) || 0;
@@ -906,7 +908,7 @@ function parseCSV(text) {
       cpc = parseFloat(getVal(cols,'cpc')) || 0;
     }
     if (spend <= 0) return null;
-    return { date:d, ds, campaign, adName, sku, spend, purchases, revenue, roas, ctr, cpc };
+    return { date:d, ds, campaign, adSet, adName, sku, spend, purchases, revenue, roas, ctr, cpc };
   }).filter(Boolean);
 }
 
@@ -982,9 +984,9 @@ function init() {
 function aggregateAds(data) {
   const map = {};
   data.forEach(r => {
-    // 메타처럼 소재명 + SKU + 광고세트(캠페인) 기준으로 분리
-    const key = r.sku+'||'+r.adName+'||'+r.campaign;
-    if (!map[key]) map[key] = { sku:r.sku, adName:r.adName, campaign:r.campaign, spend:0, purchases:0, revenue:0, ctrs:[], cpcs:[], roasList:[] };
+    // 메타처럼 소재명 + SKU + 광고세트 이름 기준으로 완전 분리
+    const key = r.sku+'||'+r.adName+'||'+(r.adSet||r.campaign||'');
+    if (!map[key]) map[key] = { sku:r.sku, adName:r.adName, adSet:r.adSet||'', campaign:r.campaign||'', spend:0, purchases:0, revenue:0, ctrs:[], cpcs:[], roasList:[] };
     map[key].spend += r.spend; map[key].purchases += r.purchases; map[key].revenue += r.revenue;
     map[key].ctrs.push(r.ctr); map[key].cpcs.push(r.cpc);
     if (r.roas > 0) map[key].roasList.push(r.roas);
@@ -1048,7 +1050,7 @@ function renderTop5() {
       <div class="top5-rank">${i+1}</div>
       <div style="flex:1;min-width:0">
         <div class="top5-name">${a.adName}</div>
-        <div class="top5-sku">${a.sku} · 지출 ${fmtW(a.spend)}</div>
+        <div class="top5-sku">${a.sku}${a.adSet?' · '+a.adSet:''} · 지출 ${fmtW(a.spend)}</div>
       </div>
       <div class="top5-roas ${cls}">${(a.roas*100).toFixed(0)}%</div>
     </div>
@@ -1081,7 +1083,7 @@ function renderTable() {
     const [label,cls] = getStatus(a.roas);
     return `<tr>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.adName}">${a.adName}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text3)" title="${a.campaign}">${a.campaign||'-'}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text3)" title="${a.adSet||a.campaign}">${a.adSet||a.campaign||'-'}</td>
       <td><span class="badge-sku">${a.sku}</span></td>
       <td><div class="roas-cell"><div class="roas-track"><div class="roas-fill" style="width:${pct}%;background:${isGood?'var(--green)':'var(--red)'}"></div></div><span class="roas-num" style="color:${isGood?'var(--green)':'var(--red)'}">${(a.roas*100).toFixed(0)}%</span></div></td>
       <td>${fmtW(a.spend)}</td><td>${fmtW(a.revenue)}</td><td>${a.purchases.toLocaleString()}</td>
