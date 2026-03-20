@@ -498,6 +498,25 @@
           <div class="top5-list" id="top5Bad"></div>
         </div>
       </div>
+      <div class="ai-panel fade-up" id="aiPanel">
+        <div class="ai-panel-header">
+          <div class="ai-panel-icon">✦</div>
+          <div>
+            <div class="ai-panel-title">AI 소재 추천</div>
+            <div class="ai-panel-sub">데이터 기반으로 다음 주 제작 방향을 추천받으세요</div>
+          </div>
+        </div>
+        <div class="ai-panel-body">
+          <div class="ai-summary" id="aiSummary"></div>
+          <div class="ai-cta">
+            <button class="btn-primary" onclick="openClaude()">Claude에게 소재 방향 추천받기 →</button>
+            <button class="btn-secondary" onclick="copyPrompt()">프롬프트 복사</button>
+            <button class="btn-notion" onclick="copyNotion()">📋 노션 복사</button>
+          </div>
+          <div id="copyMsg" style="font-size:12px;color:var(--green);margin-top:8px;display:none">✓ 클립보드에 복사됐어요!</div>
+          <div id="notionMsg" style="font-size:12px;color:#6A1B9A;margin-top:8px;display:none">✓ 노션에 붙여넣기 할 수 있어요! (Ctrl+V)</div>
+        </div>
+      </div>
       <div class="two-col fade-up">
         <div class="card">
           <div class="card-title"><span class="card-title-dot"></span>SKU별 ROAS 비교</div>
@@ -523,25 +542,6 @@
             </thead>
             <tbody id="tableBody"></tbody>
           </table>
-        </div>
-      </div>
-      <div class="ai-panel fade-up" id="aiPanel">
-        <div class="ai-panel-header">
-          <div class="ai-panel-icon">✦</div>
-          <div>
-            <div class="ai-panel-title">AI 소재 추천</div>
-            <div class="ai-panel-sub">데이터 기반으로 다음 주 제작 방향을 추천받으세요</div>
-          </div>
-        </div>
-        <div class="ai-panel-body">
-          <div class="ai-summary" id="aiSummary"></div>
-          <div class="ai-cta">
-            <button class="btn-primary" onclick="openClaude()">Claude에게 소재 방향 추천받기 →</button>
-            <button class="btn-secondary" onclick="copyPrompt()">프롬프트 복사</button>
-            <button class="btn-notion" onclick="copyNotion()">📋 노션 복사</button>
-          </div>
-          <div id="copyMsg" style="font-size:12px;color:var(--green);margin-top:8px;display:none">✓ 클립보드에 복사됐어요!</div>
-          <div id="notionMsg" style="font-size:12px;color:#6A1B9A;margin-top:8px;display:none">✓ 노션에 붙여넣기 할 수 있어요! (Ctrl+V)</div>
         </div>
       </div>
     </div>
